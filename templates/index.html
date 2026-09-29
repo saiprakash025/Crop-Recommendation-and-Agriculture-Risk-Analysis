@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>🌾 Crop Recommendation &amp; Agricultural Risk Assessment</h1>
+<p class="subtitle">Enter your soil and climate parameters to get a recommended crop and its risk level.</p>
+
+{% if error %}
+  <div class="alert error">{{ error }}</div>
+{% endif %}
+
+<form method="POST" class="form-grid">
+  <label>Nitrogen (N)
+    <input type="number" step="any" name="N" value="{{ values.N }}" required>
+  </label>
+  <label>Phosphorus (P)
+    <input type="number" step="any" name="P" value="{{ values.P }}" required>
+  </label>
+  <label>Potassium (K)
+    <input type="number" step="any" name="K" value="{{ values.K }}" required>
+  </label>
+  <label>Temperature (°C)
+    <input type="number" step="any" name="temperature" value="{{ values.temperature }}" required>
+  </label>
+  <label>Humidity (%)
+    <input type="number" step="any" name="humidity" value="{{ values.humidity }}" required>
+  </label>
+  <label>Soil pH
+    <input type="number" step="any" name="ph" value="{{ values.ph }}" required>
+  </label>
+  <label>Rainfall (mm)
+    <input type="number" step="any" name="rainfall" value="{{ values.rainfall }}" required>
+  </label>
+  <button type="submit">Get Recommendation</button>
+</form>
+
+{% if result %}
+<div class="result">
+  <h2>Recommended Crop: <span class="crop-name">{{ result.crop }}</span></h2>
+
+  {% if result.top3 %}
+  <div class="top3">
+    <strong>Top 3 candidates:</strong>
+    <ul>
+      {% for crop, prob in result.top3 %}
+        <li>{{ crop }} — {{ prob }}%</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="risk risk-{{ result.risk_level|lower }}">
+    <strong>Agricultural Risk Level: {{ result.risk_level }}</strong>
+    <p>Water requirement for this crop: {{ result.water_requirement }}</p>
+    {% if result.flags %}
+      <p>Out-of-range factors: {{ result.flags | join(', ') }}</p>
+    {% else %}
+      <p>All input parameters are within the suitable range for this crop.</p>
+    {% endif %}
+    <details>
+      <summary>See factor-by-factor breakdown</summary>
+      <ul>
+        {% for line in result.details %}
+          <li>{{ line }}</li>
+        {% endfor %}
+      </ul>
+    </details>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

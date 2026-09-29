@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Crop Recommendation & Risk Assessment{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <nav class="nav">
+      <a href="{{ url_for('index') }}" class="{{ 'active' if page == 'current' }}">Current Conditions</a>
+      <a href="{{ url_for('future') }}" class="{{ 'active' if page == 'future' }}">Future Prediction</a>
+    </nav>
+    {% block content %}{% endblock %}
+    <footer>Decision-support tool only — not a substitute for professional agricultural advice.</footer>
+  </div>
+</body>
+</html>
