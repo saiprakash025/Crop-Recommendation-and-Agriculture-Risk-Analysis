@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 
 from src.config import CLIMATE_FEATURES, HISTORY_PATH
+from src.errors import UserInputError
 
 REQUIRED_COLUMNS = ["date"] + CLIMATE_FEATURES
 MIN_MONTHS = 36
@@ -11,12 +12,17 @@ MAX_HORIZON = 12
 
 
 def load_history(source=None):
-    df = pd.read_csv(source if source is not None else HISTORY_PATH)
+    try:
+        df = pd.read_csv(source if source is not None else HISTORY_PATH)
+    except (pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError) as exc:
+        if source is None:
+            raise
+        raise UserInputError("The uploaded file could not be read as a CSV file.") from exc
     df.columns = [str(c).strip().lower() for c in df.columns]
 
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
-        raise ValueError(
+        raise UserInputError(
             "Historical weather file is missing column(s): "
             + ", ".join(missing)
             + ". Required columns: "
@@ -36,7 +42,7 @@ def load_history(source=None):
     )
 
     if len(monthly) < MIN_MONTHS:
-        raise ValueError(
+        raise UserInputError(
             f"Need at least {MIN_MONTHS} months of historical data, found {len(monthly)}."
         )
     return monthly
@@ -77,7 +83,7 @@ def backtest(monthly):
 
 def forecast_weather(monthly, horizon):
     if not 1 <= horizon <= MAX_HORIZON:
-        raise ValueError(f"Forecast horizon must be between 1 and {MAX_HORIZON} months.")
+        raise UserInputError(f"Forecast horizon must be between 1 and {MAX_HORIZON} months.")
 
     models = _fit(monthly)
     last = monthly.index[-1]

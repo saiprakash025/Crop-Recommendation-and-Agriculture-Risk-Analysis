@@ -1,82 +1,41 @@
 {% extends "base.html" %}
 {% block title %}Future Crop Suitability & Risk{% endblock %}
 {% block content %}
-<h1>📈 Future Crop Suitability &amp; Risk Prediction</h1>
-<p class="subtitle">Enter your soil values. Historical temperature, humidity and rainfall are used to forecast upcoming months, and each forecast month gets a crop recommendation and risk level.</p>
+<div class="layout">
+  <section class="input-panel">
+    <h1>📈 Future Crop Suitability &amp; Risk Prediction</h1>
+    <p class="subtitle">Enter your soil values. Historical temperature, humidity and rainfall are used to forecast upcoming months, and each forecast month gets a crop recommendation and risk level.</p>
 
-{% if error %}
-  <div class="alert error">{{ error }}</div>
-{% endif %}
+    <form method="POST" enctype="multipart/form-data" class="form-grid" data-ajax>
+      <label>Nitrogen (N)
+        <input type="number" step="any" name="N" value="{{ values.N }}" required>
+      </label>
+      <label>Phosphorus (P)
+        <input type="number" step="any" name="P" value="{{ values.P }}" required>
+      </label>
+      <label>Potassium (K)
+        <input type="number" step="any" name="K" value="{{ values.K }}" required>
+      </label>
+      <label>Soil pH
+        <input type="number" step="any" name="ph" value="{{ values.ph }}" required>
+      </label>
+      <label>Forecast horizon (months)
+        <select name="horizon">
+          {% for m in range(1, max_horizon + 1) %}
+            <option value="{{ m }}" {{ 'selected' if values.horizon|string == m|string }}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Historical weather CSV (optional)
+        <input type="file" name="history" accept=".csv">
+      </label>
+      <p class="hint">CSV columns: <code>date, temperature, humidity, rainfall</code>. At least 36 months of data. Daily or monthly rows are both accepted. If no file is chosen, <code>data/historical_weather.csv</code> is used.</p>
+      <button type="submit">Predict Future Suitability</button>
+    </form>
+  </section>
 
-<form method="POST" enctype="multipart/form-data" class="form-grid">
-  <label>Nitrogen (N)
-    <input type="number" step="any" name="N" value="{{ values.N }}" required>
-  </label>
-  <label>Phosphorus (P)
-    <input type="number" step="any" name="P" value="{{ values.P }}" required>
-  </label>
-  <label>Potassium (K)
-    <input type="number" step="any" name="K" value="{{ values.K }}" required>
-  </label>
-  <label>Soil pH
-    <input type="number" step="any" name="ph" value="{{ values.ph }}" required>
-  </label>
-  <label>Forecast horizon (months)
-    <select name="horizon">
-      {% for m in range(1, max_horizon + 1) %}
-        <option value="{{ m }}" {{ 'selected' if values.horizon|string == m|string }}>{{ m }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <label>Historical weather CSV (optional)
-    <input type="file" name="history" accept=".csv">
-  </label>
-  <p class="hint">CSV columns: <code>date, temperature, humidity, rainfall</code>. At least 36 months of data. Daily or monthly rows are both accepted. If no file is chosen, <code>data/historical_weather.csv</code> is used.</p>
-  <button type="submit">Predict Future Suitability</button>
-</form>
-
-{% if result %}
-<div class="result">
-  <h2>Most Frequent Recommendation: <span class="crop-name">{{ result.best_crop }}</span></h2>
-  <p>Recommended in {{ result.best_crop_months }} of {{ result.rows|length }} forecast months. High-risk months: {{ result.high_risk_months }}.</p>
-
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Month</th>
-          <th>Temp (°C)</th>
-          <th>Humidity (%)</th>
-          <th>Rainfall (mm)</th>
-          <th>Crop</th>
-          <th>Confidence</th>
-          <th>Risk</th>
-          <th>Out-of-range</th>
-          <th>Water need</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in result.rows %}
-        <tr>
-          <td>{{ r.month }}</td>
-          <td>{{ r.temperature }}</td>
-          <td>{{ r.humidity }}</td>
-          <td>{{ r.rainfall }}</td>
-          <td>{{ r.crop }}</td>
-          <td>{{ r.confidence }}%</td>
-          <td><span class="badge risk-{{ r.risk_level|lower }}">{{ r.risk_level }}</span></td>
-          <td>{{ r.flags | join(', ') if r.flags else '—' }}</td>
-          <td>{{ r.water_requirement }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <div class="top3">
-    <p>Forecast built from {{ result.history_months }} months of history ({{ result.history_from }} to {{ result.history_to }}).</p>
-    <p>Accuracy on the last 12 held-out months (mean absolute error): temperature {{ result.errors.temperature }} °C, humidity {{ result.errors.humidity }} %, rainfall {{ result.errors.rainfall }} mm.</p>
-  </div>
+  <aside id="results" class="results-panel" aria-live="polite" data-has-result="{{ '1' if (future or error or future_error) else '0' }}">
+    {% include "_results.html" %}
+  </aside>
 </div>
-{% endif %}
 {% endblock %}

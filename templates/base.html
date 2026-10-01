@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Crop Recommendation & Risk Assessment{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
   <div class="container">
@@ -15,5 +16,8 @@
     {% block content %}{% endblock %}
     <footer>Decision-support tool only — not a substitute for professional agricultural advice.</footer>
   </div>
+  <div id="results-backdrop" class="results-backdrop" hidden></div>
+  <button id="show-results" class="show-results" type="button" hidden>View results</button>
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </body>
 </html>
