@@ -1,125 +1,143 @@
-import pickle
+import logging
 
-import pandas as pd
-from flask import Flask, render_template, request
+from flask import Flask, make_response, render_template, request
+from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 
-from src.config import CLIMATE_FEATURES, FEATURES, MODEL_DIR, SOIL_FEATURES
-from src.forecast import MAX_HORIZON, forecast_weather, load_history
-from src.recommender import recommend
-from src.risk_assessment import assess_risk, load_risk_reference
-from src.train_model import train
+from src import service
+from src.config import DEFAULT_HORIZON, FEATURES, SOIL_FEATURES
+from src.errors import ModelUnavailableError, UserInputError
+from src.forecast import MAX_HORIZON
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024
 
-_artifacts = {}
+MSG_CURRENT_FAILED = "Crop recommendation could not be generated. Please check your input values and try again."
+MSG_FUTURE_FAILED = "Future prediction could not be generated. Please check your input values and try again."
+MSG_MODEL_MISSING = "The prediction model is not available on the server right now. Please try again later."
+MSG_TOO_LARGE = "The uploaded file is too large. The maximum size is 4 MB."
+MSG_SERVER = "Something went wrong on the server. Please try again."
+
+try:
+    service.load_artifacts()
+except Exception:
+    app.logger.exception("Model could not be loaded at startup; it will be retried on the first request")
 
 
-def get_artifacts():
-    if not _artifacts:
-        if not (MODEL_DIR / "model.pkl").exists() or not (MODEL_DIR / "label_encoder.pkl").exists():
-            train()
-        with open(MODEL_DIR / "model.pkl", "rb") as f:
-            _artifacts["model"] = pickle.load(f)
-        with open(MODEL_DIR / "label_encoder.pkl", "rb") as f:
-            _artifacts["label_encoder"] = pickle.load(f)
-        _artifacts["risk_ref"] = load_risk_reference()
-    return _artifacts["model"], _artifacts["label_encoder"], _artifacts["risk_ref"]
+def is_fetch():
+    return request.headers.get("X-Requested-With") == "fetch"
+
+
+def respond(template, status=200, **context):
+    if is_fetch():
+        response = make_response(render_template("_results.html", **context), status)
+        response.headers["X-Result-Panel"] = "1"
+    else:
+        response = make_response(render_template(template, **context), status)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def run_future_safely(soil, horizon, source=None):
+    try:
+        return service.run_future(soil, horizon, source), None
+    except UserInputError as exc:
+        app.logger.warning("Future prediction rejected: %s", exc)
+        return None, str(exc)
+    except ModelUnavailableError:
+        app.logger.exception("Model unavailable during future prediction")
+        return None, MSG_MODEL_MISSING
+    except Exception:
+        app.logger.exception("Future prediction failed")
+        return None, MSG_FUTURE_FAILED
 
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    result = None
-    error = None
-    form_values = {f: "" for f in FEATURES}
+    context = {
+        "page": "current",
+        "values": {**{f: "" for f in FEATURES}, "horizon": str(DEFAULT_HORIZON)},
+        "max_horizon": MAX_HORIZON,
+        "current": None,
+        "future": None,
+        "future_error": None,
+        "error": None,
+    }
+    status = 200
 
     if request.method == "POST":
         try:
-            form_values = {f: request.form.get(f, "") for f in FEATURES}
-            values = {f: float(request.form[f]) for f in FEATURES}
+            context["values"] = {**{f: request.form.get(f, "") for f in FEATURES},
+                                 "horizon": request.form.get("horizon", str(DEFAULT_HORIZON))}
+            values = service.parse_inputs(request.form, FEATURES)
+            horizon = service.parse_horizon(request.form)
 
-            model, le, risk_ref = get_artifacts()
-            X = pd.DataFrame([values])[FEATURES]
-            top3 = recommend(model, le, X)[0]
-            crop = top3[0][0]
-            risk = assess_risk(values, crop, risk_ref)
+            context["current"] = service.run_current(values)
 
-            result = {
-                "crop": crop,
-                "top3": top3,
-                "risk_level": risk["risk_level"],
-                "flags": risk["flags"],
-                "details": risk["details"],
-                "water_requirement": risk["water_requirement"],
-            }
-        except Exception as exc:
-            error = f"Could not generate a recommendation: {exc}"
+            soil = {f: values[f] for f in SOIL_FEATURES}
+            context["future"], context["future_error"] = run_future_safely(soil, horizon)
+        except UserInputError as exc:
+            context["error"] = str(exc)
+            status = 400
+        except RequestEntityTooLarge:
+            context["error"] = MSG_TOO_LARGE
+            status = 413
+        except ModelUnavailableError:
+            app.logger.exception("Model unavailable during crop recommendation")
+            context["error"] = MSG_MODEL_MISSING
+            status = 503
+        except Exception:
+            app.logger.exception("Crop recommendation failed")
+            context["error"] = MSG_CURRENT_FAILED
+            status = 500
 
-    return render_template("index.html", result=result, error=error, values=form_values, page="current")
+    return respond("index.html", status, **context)
 
 
 @app.route("/future", methods=["GET", "POST"])
 def future():
-    result = None
-    error = None
-    form_values = {f: "" for f in SOIL_FEATURES}
-    form_values["horizon"] = "6"
+    context = {
+        "page": "future",
+        "values": {**{f: "" for f in SOIL_FEATURES}, "horizon": str(DEFAULT_HORIZON)},
+        "max_horizon": MAX_HORIZON,
+        "current": None,
+        "future": None,
+        "future_error": None,
+        "error": None,
+    }
+    status = 200
 
     if request.method == "POST":
         try:
-            form_values = {f: request.form.get(f, "") for f in SOIL_FEATURES}
-            form_values["horizon"] = request.form.get("horizon", "6")
-            soil = {f: float(request.form[f]) for f in SOIL_FEATURES}
-            horizon = int(form_values["horizon"])
+            context["values"] = {**{f: request.form.get(f, "") for f in SOIL_FEATURES},
+                                 "horizon": request.form.get("horizon", str(DEFAULT_HORIZON))}
+            soil = service.parse_inputs(request.form, SOIL_FEATURES)
+            horizon = service.parse_horizon(request.form)
 
             upload = request.files.get("history")
             source = upload if upload is not None and upload.filename else None
-            history = load_history(source)
-            forecast, errors = forecast_weather(history, horizon)
 
-            model, le, risk_ref = get_artifacts()
-            rows = []
-            for _, row in forecast.iterrows():
-                values = {**soil, **{c: float(row[c]) for c in CLIMATE_FEATURES}}
-                X = pd.DataFrame([values])[FEATURES]
-                top3 = recommend(model, le, X)[0]
-                crop, confidence = top3[0]
-                risk = assess_risk(values, crop, risk_ref)
-                rows.append({
-                    "month": row["month"],
-                    "temperature": row["temperature"],
-                    "humidity": row["humidity"],
-                    "rainfall": row["rainfall"],
-                    "crop": crop,
-                    "confidence": confidence,
-                    "risk_level": risk["risk_level"],
-                    "flags": risk["flags"],
-                    "water_requirement": risk["water_requirement"],
-                })
+            context["future"], context["future_error"] = run_future_safely(soil, horizon, source)
+            if context["future_error"]:
+                if context["future_error"] == MSG_MODEL_MISSING:
+                    status = 503
+                elif context["future_error"] == MSG_FUTURE_FAILED:
+                    status = 500
+                else:
+                    status = 400
+        except UserInputError as exc:
+            context["error"] = str(exc)
+            status = 400
+        except RequestEntityTooLarge:
+            context["error"] = MSG_TOO_LARGE
+            status = 413
+        except Exception:
+            app.logger.exception("Future prediction request failed")
+            context["error"] = MSG_FUTURE_FAILED
+            status = 500
 
-            crops = pd.Series([r["crop"] for r in rows])
-            best_crop = crops.value_counts().index[0]
-            result = {
-                "rows": rows,
-                "best_crop": best_crop,
-                "best_crop_months": int((crops == best_crop).sum()),
-                "high_risk_months": sum(1 for r in rows if r["risk_level"] == "High"),
-                "history_months": len(history),
-                "history_from": history.index[0].strftime("%b %Y"),
-                "history_to": history.index[-1].strftime("%b %Y"),
-                "errors": errors,
-            }
-        except Exception as exc:
-            error = f"Could not generate a forecast: {exc}"
-
-    return render_template(
-        "future.html",
-        result=result,
-        error=error,
-        values=form_values,
-        max_horizon=MAX_HORIZON,
-        page="future",
-    )
+    return respond("future.html", status, **context)
 
 
 @app.route("/health")
@@ -127,5 +145,28 @@ def health():
     return {"status": "ok"}
 
 
+@app.errorhandler(Exception)
+def unhandled_error(exc):
+    if isinstance(exc, HTTPException):
+        return exc
+    app.logger.exception("Unhandled exception")
+    if request.path == "/future":
+        page, message = "future", MSG_FUTURE_FAILED
+    else:
+        page, message = "current", MSG_SERVER
+    return respond(
+        "future.html" if page == "future" else "index.html",
+        500,
+        page=page,
+        values={"horizon": str(DEFAULT_HORIZON)},
+        max_horizon=MAX_HORIZON,
+        current=None,
+        future=None,
+        future_error=None,
+        error=message,
+    )
+
+
 if __name__ == "__main__":
+    service.load_artifacts(train_if_missing=True)
     app.run(debug=True)

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="layout">
+  <section class="input-panel">
+    <h1>🌾 Crop Recommendation &amp; Agricultural Risk Assessment</h1>
+    <p class="subtitle">Enter your soil and climate parameters to get a recommended crop, its risk level and a future prediction.</p>
+
+    <form method="POST" class="form-grid" data-ajax>
+      <label>Nitrogen (N)
+        <input type="number" step="any" name="N" value="{{ values.N }}" required>
+      </label>
+      <label>Phosphorus (P)
+        <input type="number" step="any" name="P" value="{{ values.P }}" required>
+      </label>
+      <label>Potassium (K)
+        <input type="number" step="any" name="K" value="{{ values.K }}" required>
+      </label>
+      <label>Temperature (°C)
+        <input type="number" step="any" name="temperature" value="{{ values.temperature }}" required>
+      </label>
+      <label>Humidity (%)
+        <input type="number" step="any" name="humidity" value="{{ values.humidity }}" required>
+      </label>
+      <label>Soil pH
+        <input type="number" step="any" name="ph" value="{{ values.ph }}" required>
+      </label>
+      <label>Rainfall (mm)
+        <input type="number" step="any" name="rainfall" value="{{ values.rainfall }}" required>
+      </label>
+      <label>Future prediction (months)
+        <select name="horizon">
+          {% for m in range(1, max_horizon + 1) %}
+            <option value="{{ m }}" {{ 'selected' if values.horizon|string == m|string }}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit">Get Recommendation</button>
+    </form>
+  </section>
+
+  <aside id="results" class="results-panel" aria-live="polite" data-has-result="{{ '1' if (current or future or error or future_error) else '0' }}">
+    {% include "_results.html" %}
+  </aside>
+</div>
+{% endblock %}

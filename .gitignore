@@ -5,3 +5,6 @@ venv/
 .env
 *.log
 .DS_Store
+
+model/*.pkl
+model/metadata.json

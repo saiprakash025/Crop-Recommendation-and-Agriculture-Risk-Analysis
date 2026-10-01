@@ -10,6 +10,7 @@ A Flask web app with two parts:
 ```
 .
 ├── app.py
+├── gunicorn.conf.py
 ├── requirements.txt
 ├── Procfile
 ├── data/
@@ -65,14 +66,22 @@ python app.py
 
 Skip `generate_dataset.py` once you have added real data. Then open http://127.0.0.1:5000 (current conditions) or http://127.0.0.1:5000/future (future prediction).
 
-## Deploy (Render example)
+## Deploy (Render)
 
 1. Push the project to GitHub.
 2. Render: New, Web Service, connect the repo.
 3. Build command: `pip install -r requirements.txt && python -m src.build_risk_reference && python -m src.train_model`
 4. Start command: `gunicorn app:app`
 
-The `/health` route can be used for health checks.
+Gunicorn settings (1 worker with 4 threads, 120 s timeout, model preloaded at startup) live in `gunicorn.conf.py`, which gunicorn reads automatically from the project root, so the start command does not need extra flags. They can be overridden with the `WEB_CONCURRENCY`, `GUNICORN_THREADS` and `GUNICORN_TIMEOUT` environment variables.
+
+The model must be trained in the build step. The server never trains inside a web request; if the model files are missing it returns a clear "model not available" message and logs the reason.
+
+The `/health` route can be used as the Render health check path.
+
+## Results panel
+
+Results appear in a sidebar next to the form (on screens narrower than 960 px it becomes a bottom sheet with a Close button). The home page shows current recommendation, risk analysis and future prediction together; the Future Prediction page shows the future prediction. The forms still work without JavaScript, in which case results render on the reloaded page.
 
 ## Limitations
 

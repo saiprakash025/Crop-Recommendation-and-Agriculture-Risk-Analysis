@@ -1,0 +1,110 @@
+<div class="panel-head">
+  <h2>Results</h2>
+  <button type="button" class="close-btn" data-close aria-label="Close results">Close ✕</button>
+</div>
+
+{% if error %}
+  <div class="alert error">{{ error }}</div>
+{% endif %}
+
+{% if current %}
+<section class="panel-section">
+  <h3><span class="step">1</span> Current Crop Recommendation</h3>
+  <div class="crop-big">{{ current.crop }}</div>
+  <div class="top3">
+    <strong>Top 3 candidates</strong>
+    <ul>
+      {% for crop, prob in current.top3 %}
+        <li>{{ crop }} — {{ prob }}%</li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
+<section class="panel-section">
+  <h3><span class="step">2</span> Agriculture Risk Analysis</h3>
+  <div class="risk risk-{{ current.risk_level|lower }}">
+    <strong>Risk Level: {{ current.risk_level }}</strong>
+    <p>Reason: {{ current.reason }}</p>
+    <p>Water requirement: {{ current.water_requirement }}</p>
+    <details>
+      <summary>Factor-by-factor breakdown</summary>
+      <ul>
+        {% for line in current.details %}
+          <li>{{ line }}</li>
+        {% endfor %}
+      </ul>
+    </details>
+  </div>
+</section>
+{% endif %}
+
+{% if future or future_error %}
+<section class="panel-section">
+  <h3>{% if page == 'current' %}<span class="step">3</span> {% endif %}Future Prediction</h3>
+  {% if future_error %}
+    <div class="alert error">{{ future_error }}</div>
+  {% endif %}
+  {% if future %}
+    <div class="future-next">
+      <div class="future-next-title">Next month ({{ future.first.month }})</div>
+      <div class="future-grid">
+        <div><span>Future Temperature</span><strong>{{ future.first.temperature }} °C</strong></div>
+        <div><span>Future Rainfall</span><strong>{{ future.first.rainfall }} mm</strong></div>
+        <div><span>Future Humidity</span><strong>{{ future.first.humidity }} %</strong></div>
+        <div><span>Predicted Crop</span><strong>{{ future.first.crop }}</strong></div>
+      </div>
+    </div>
+
+    <p class="future-summary">
+      Most frequent crop over {{ future.rows|length }} month{{ 's' if future.rows|length != 1 }}:
+      <strong>{{ future.best_crop }}</strong> ({{ future.best_crop_months }} of {{ future.rows|length }}).
+      High-risk months: {{ future.high_risk_months }}.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th>Temp °C</th>
+            <th>Hum %</th>
+            <th>Rain mm</th>
+            <th>Crop</th>
+            <th>Risk</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in future.rows %}
+          <tr>
+            <td>{{ r.month }}</td>
+            <td>{{ r.temperature }}</td>
+            <td>{{ r.humidity }}</td>
+            <td>{{ r.rainfall }}</td>
+            <td>{{ r.crop }} <small>{{ r.confidence }}%</small></td>
+            <td><span class="badge risk-{{ r.risk_level|lower }}">{{ r.risk_level }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <details>
+      <summary>Out-of-range factors and water need by month</summary>
+      <ul>
+        {% for r in future.rows %}
+          <li>{{ r.month }}: {{ r.flags | join(', ') if r.flags else 'none out of range' }} · water need {{ r.water_requirement }}</li>
+        {% endfor %}
+      </ul>
+    </details>
+
+    <p class="muted">Forecast built from {{ future.history_months }} months of history ({{ future.history_from }} to {{ future.history_to }}). Error on the last 12 held-out months: temperature {{ future.errors.temperature }} °C, humidity {{ future.errors.humidity }} %, rainfall {{ future.errors.rainfall }} mm.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if not current and not future and not future_error and not error %}
+<div class="placeholder">
+  <p>Your results will appear here after you submit the form.</p>
+</div>
+{% endif %}
