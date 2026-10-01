@@ -1,3 +1,7 @@
+
+import faulthandler
+faulthandler.enable()
+
 import logging
 
 from flask import Flask, make_response, render_template, request
